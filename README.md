@@ -1,0 +1,215 @@
+# OpenDeepResearcher 🔬🚀
+
+[![CI/CD Pipeline](https://github.com/opendeepresearcher/opendeepresearcher/actions/workflows/ci.yml/badge.svg)](https://github.com/opendeepresearcher/opendeepresearcher/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Type Checked: mypy](https://img.shields.io/badge/type%20checked-mypy-informational.svg)](https://mypy-lang.org/)
+
+**OpenDeepResearcher** is a production-grade, open-source autonomous deep research system. It functions as an autonomous research team—formulating multi-perspective search queries, executing stealth browser crawls, parsing complex academic literature, detecting knowledge graph communities via **GraphRAG**, and synthesizing publication-ready research reports in Academic LaTeX, interactive HTML, and podcast-style audio scripts.
+
+It operates **100% locally** (via Ollama or LM Studio) with a **$0.00 compute budget** or seamlessly connects to frontier cloud APIs (OpenAI, Gemini, Anthropic, DeepSeek, Groq).
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+flowchart TD
+    User([User / CLI / REST API]) --> Planner[Planner Agent: Outline & Query Gen]
+    Planner --> HITL{Human-in-the-Loop Review}
+    HITL -->|Approved / Refined| SearchEngine[Search Dispatcher: DDG / SearXNG / Tavily / Academic]
+    
+    subgraph Academic Sources
+        SearchEngine --> Arxiv[arXiv API]
+        SearchEngine --> SemanticScholar[Semantic Scholar API]
+        SearchEngine --> Crossref[Crossref DOI API]
+        SearchEngine --> PubMed[PubMed NCBI API]
+    end
+
+    SearchEngine --> Crawler[Firecrawl-Grade Crawler: Scrape / Crawl / Map]
+    Crawler --> Stealth[Stealth Headers & TLS Fingerprinting]
+    Crawler --> Parser[DOM Normalizer & Table / Image Extractor]
+    
+    Parser --> VectorRAG[Hybrid Vector DB: BGE-M3 + BM25 RRF]
+    Parser --> GraphRAG[GraphRAG: NetworkX Entity & Community Detection]
+    
+    VectorRAG --> Explorer[Explorer Agent: Claim Extraction]
+    GraphRAG --> Explorer
+    
+    Explorer --> Critic{Critic Agent: Information Saturation Check}
+    Critic -->|Gaps / Contradictions| SearchEngine
+    Critic -->|Saturated / Depth Reached| Synthesizer[Synthesizer Agent: Report Authoring]
+    
+    Synthesizer --> FactChecker[Fact-Checker Agent: Grounding & Citations]
+    FactChecker --> Exporters[Multi-Format Exporters]
+    
+    subgraph Deliverables
+        Exporters --> MD[Executive Markdown]
+        Exporters --> LaTeX[Academic LaTeX .tex + .bib]
+        Exporters --> HTML[Interactive HTML + Mermaid]
+        Exporters --> Audio[NotebookLM Audio Script]
+    end
+```
+
+---
+
+## ✨ Key Capabilities
+
+### 1. 🧠 GraphRAG & Hybrid Vector RAG
+- **Dense + Sparse Hybrid RAG**: BGE-M3 dense embeddings combined with BM25 keyword matching via Reciprocal Rank Fusion (RRF).
+- **Knowledge Graph (NetworkX / Neo4j)**: Automatically extracts entities (Technologies, People, Metrics, Organizations) and predicates (`DEVELOPS`, `ACCELERATES`, `CONFLICTS_WITH`).
+- **Community Detection**: Identifies cross-domain conceptual clusters using Clauset-Newman-Moore modularity.
+
+### 2. 👁️ Multi-Modal Vision Analysis
+- Automatically extracts figures, diagrams, and benchmarks from web articles and academic PDFs.
+- Analyzes visual data using local vision models (`llama3.2-vision`) or cloud vision APIs (`gpt-4o`, `gemini-1.5-pro`).
+- Includes VRAM-aware pre-flight checks to fallback gracefully to cloud or text-only if local VRAM is constrained.
+
+### 3. 🕸️ Firecrawl-Grade Web Crawling
+- **Endpoints**: Native implementation of `/scrape`, `/crawl`, and `/map`.
+- **Anti-Bot Evasion**: Realistic TLS fingerprints, HTTP/2 header sequences, randomized browser signatures, and referer chains.
+- **Paywall & DOM Cleaning**: Strips cookie banners, tracking scripts, and popups while preserving `<article>`, tables, and math equations.
+
+### 4. 📊 Tabular Intelligence (Spreadsheets & CSVS)
+- Parses multi-sheet Excel files (`.xlsx`, `.xls`) and CSVs via `openpyxl` and `pandas`.
+- Supports column filtering and cell range extraction for structured statistical analysis.
+- Rejects dangerous macro-enabled workbooks (`.xlsm`) automatically.
+
+### 5. 📚 Broad Academic Integration
+- **arXiv**: Fetches pre-prints across Computer Science, Physics, and Math with Atom XML parsing.
+- **Semantic Scholar**: Integrates academic citation counts and paper influence graphs.
+- **Crossref**: Resolves DOIs and verifies peer-reviewed publication metadata.
+- **PubMed**: Queries biomedical and clinical studies via NCBI Entrez e-utilities.
+
+### 6. 🤝 Active Human-in-the-Loop (HITL) Steering
+- **Interactive Outline Approval**: The user inspects and steers the research plan before expensive crawling begins.
+- **Mid-Execution Rabbit Hole Guards**: Triggers interactive user consultation if contradictory claims or ambiguity exceed thresholds.
+- **Unattended Mode (`-u`)**: Available for overnight batch research jobs.
+
+### 7. 🛡️ AST Pre-Flight Security Pipeline
+- **Gate 1**: Validates AST against dangerous Python calls (`os.system`, `subprocess`, `eval`, `builtins.__import__`).
+- **Gate 2**: Confines filesystem writes strictly inside `<workspace>/storage` and `<workspace>/reports`. Blocks Windows reserved device names (`CON`, `PRN`, `AUX`, `NUL`).
+- **Gate 3**: Enforces SSRF defense (blocks private IP ranges `10.0.0.0/8`, `192.168.0.0/16`, `127.0.0.1`, `169.254.169.254`).
+- **Gate 4**: Strips prompt injection traps from scraped HTML text.
+- **Gate 5**: Strips malicious XSS `<script>` payloads from final report markdown.
+
+### 8. 📄 Multi-Format Publication Exporters
+- **Academic LaTeX**: Compiles `.tex` file with standard `article` class, abstract, and automatically formatted `.bib` BibTeX reference list.
+- **Interactive HTML**: Standalone HTML document featuring typography, interactive table of contents, and responsive Mermaid.js diagrams.
+- **Executive Markdown**: Clean GitHub-flavored markdown with numbered footnotes.
+- **Audio Script**: NotebookLM-style dialogue between Host and Co-host summarizing key discoveries.
+
+---
+
+## ⚡ Quickstart
+
+### Installation (with `uv`)
+```bash
+# Clone repository
+git clone https://github.com/opendeepresearcher/opendeepresearcher.git
+cd opendeepresearcher
+
+# Install dependencies using uv
+uv sync
+```
+
+### Configuration
+Copy `.env.example` to `.env` and configure your API keys (or leave blank to run 100% locally):
+```bash
+cp .env.example .env
+```
+
+### Run Autonomous Research via CLI
+```bash
+# 1. Run 100% locally with Ollama ($0 budget)
+uv run opendeepresearcher "Commercial Viability of Solid-State Batteries in EVs by 2028" --local
+
+# 2. Run with deep recursion (Depth 3) and unattended mode
+uv run opendeepresearcher "Mechanisms of Action of GLP-1 Receptor Agonists in Neurodegenerative Diseases" --depth 3 --unattended
+```
+
+---
+
+## 💻 CLI Command Reference
+
+`uv run opendeepresearcher [OPTIONS] TOPIC`
+
+| Option | Flag | Type | Default | Description |
+|---|---|---|---|---|
+| `--depth` | `-d` | `int` | `2` | Search recursion depth (1-4). Controls multi-hop discovery. |
+| `--local` | `-l` | `bool` | `False` | Run 100% locally with Ollama (Fast: `llama3.2:3b`, Deep: `qwen2.5:14b`). |
+| `--unattended` | `-u` | `bool` | `False` | Run fully autonomously without interactive HITL pauses. |
+| `--help` | | `bool` | | Show help menu and options. |
+
+---
+
+## 🌐 REST API Server
+
+OpenDeepResearcher includes a FastAPI server supporting Firecrawl-compatible endpoints and background research missions:
+
+```bash
+uv run uvicorn src.server:app --host 0.0.0.0 --port 8000
+```
+
+### Endpoints
+- `POST /research`: Trigger a background deep research job.
+- `GET /reports/{session_id}`: Retrieve research results and generated file paths.
+- `POST /scrape`: Firecrawl-compatible single URL stealth scraper.
+- `POST /crawl`: Breadth-first website crawler with domain boundaries.
+- `POST /map`: Rapid sitemap and link discovery endpoint.
+
+---
+
+## 🐳 Docker Deployment
+
+The project provides a production-hardened multi-stage Dockerfile adhering to non-root execution (`researcher` user) and zero secret leakage.
+
+```bash
+# Build and start via Docker Compose
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+```
+
+The container automatically connects to host-hosted Ollama instances via `host.docker.internal:11434`.
+
+---
+
+## 🧪 Testing & Verification
+
+The codebase includes an automated test suite, Ruff linting, and Mypy static type checking:
+
+```bash
+# Run Ruff lint check
+uv run ruff check src tests evals
+
+# Run Ruff code formatter check
+uv run ruff format --check src tests evals
+
+# Run Mypy static type verification across 54 source files
+uv run mypy src/
+
+# Execute complete pytest suite
+uv run pytest -v
+```
+
+---
+
+## 📊 Evaluation & Hallucination Benchmarks
+
+OpenDeepResearcher provides built-in benchmarking utilities under `evals/`:
+- `evals/citation_accuracy.py`: Verifies that every factual claim in the synthesized report maps to a retrieved chunk ID.
+- `evals/hallucination_eval.py`: Measures hallucination index and citation precision against source ground truth.
+- `evals/run_benchmarks.py`: Batch evaluation harness across benchmark topics.
+
+Run evaluations:
+```bash
+uv run python evals/run_benchmarks.py
+```
+
+---
+
+## 📄 License
+Released under the [MIT License](LICENSE).
