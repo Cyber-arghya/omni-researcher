@@ -143,6 +143,22 @@ uv run opendeepresearcher "Next-Generation Perovskite Solar Cell Degradation Mec
 uv run opendeepresearcher "Mechanisms of Action of GLP-1 Receptor Agonists in Neurodegenerative Diseases" --depth 3 --unattended
 ```
 
+### 🌐 Launch the Interactive Web UI Cockpit
+OpenDeepResearcher provides a zero-build, single-page application (SPA) cockpit served directly through FastAPI:
+```bash
+# Launch Cockpit at http://localhost:8000 and auto-open default browser
+uv run opendeepresearcher ui
+
+# Run on custom host/port or remote headless server (no browser auto-open)
+uv run opendeepresearcher ui --host 0.0.0.0 --port 8000 --no-browser
+```
+**Cockpit Capabilities:**
+- **Dynamic Hardware Pill**: Displays detected VRAM, RAM, and hardware tier in the top navigation header.
+- **Real-Time Execution Timeline**: Live agent status (Planning, Searching, Crawling, Indexing, Critiquing, Synthesizing) via Server-Sent Events (SSE).
+- **Interactive GraphRAG Physics Canvas**: Explore extracted entity knowledge networks with Vis-Network.
+- **Human-in-the-Loop Steering**: Approve, pivot, or abort ongoing missions in real time.
+- **Instant Multi-Format Exporter**: One-click download for Markdown, Academic LaTeX, and in-browser NotebookLM-style Audio Podcast player.
+
 ---
 
 ## 🔑 Complete API Key Setup Guide

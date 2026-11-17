@@ -166,6 +166,7 @@ class ResearchState(BaseModel):
         "EXPORTING",
         "COMPLETED",
         "FAILED",
+        "ABORTED",
     ] = Field(default="INITIALIZED")
 
     # Data collections

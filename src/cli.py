@@ -134,6 +134,34 @@ def research(
         sys.exit(130)
 
 
+@app.command()
+def ui(
+    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Bind host address"),
+    port: int = typer.Option(8000, "--port", "-p", help="Bind port number"),
+    no_browser: bool = typer.Option(
+        False, "--no-browser", help="Do not automatically launch web browser"
+    ),
+) -> None:
+    """Launch the interactive OpenDeepResearcher Web UI Cockpit."""
+    import webbrowser
+
+    import uvicorn
+
+    url = f"http://{host}:{port}"
+    console.print(
+        Panel.fit(
+            f"[bold cyan]OpenDeepResearcher Cockpit[/bold cyan]\n"
+            f"Serving at: [bold underline green]{url}[/bold underline green]\n"
+            f"[dim]Features:[/dim] Hardware Telemetry • GraphRAG Visualizer • Real-Time SSE Stream",
+            title="🌐 Web Cockpit Launchpad",
+            border_style="cyan",
+        )
+    )
+    if not no_browser:
+        webbrowser.open(url)
+    uvicorn.run("src.server:app", host=host, port=port, reload=False)
+
+
 def main() -> None:
     """CLI entrypoint."""
     app()
