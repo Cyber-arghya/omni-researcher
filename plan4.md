@@ -88,3 +88,4 @@ Running multi-agent deep research on consumer hardware (8GB GPU VRAM + 16GB Syst
    - Test config auto-tuning and memory profile detection in `tests/test_config.py`.
    - Run Ruff, Mypy, and Pytest.
    - Commit and push to GitHub repository `Cyber-arghya/omni-researcher`.
+
