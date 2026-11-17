@@ -73,6 +73,7 @@ class LLMClient:
         max_tokens: int = 4096,
         response_format: dict[str, str] | None = None,
         retries: int = 2,
+        num_ctx: int | None = None,
     ) -> tuple[str, int, int]:
         """Execute chat completion with automatic retries and token metrics.
 
@@ -92,9 +93,15 @@ class LLMClient:
                 if response_format:
                     kwargs["response_format"] = response_format
 
+                # Dynamically scale Ollama num_ctx if specified
+                if num_ctx and self.provider == "ollama":
+                    extra = kwargs.setdefault("extra_body", {})
+                    extra.setdefault("options", {})["num_ctx"] = num_ctx
+
                 # Enable thinking template for reasoning models (Nemotron, DeepSeek-R1)
                 if any(k in model.lower() for k in ["nemotron", "thinking"]):
-                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
+                    extra = kwargs.setdefault("extra_body", {})
+                    extra.setdefault("chat_template_kwargs", {})["enable_thinking"] = True
 
                 response = await self.client.chat.completions.create(**kwargs)
                 msg = response.choices[0].message

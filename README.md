@@ -154,10 +154,14 @@ uv run opendeepresearcher ui --host 0.0.0.0 --port 8000 --no-browser
 ```
 **Cockpit Capabilities:**
 - **Dynamic Hardware Pill**: Displays detected VRAM, RAM, and hardware tier in the top navigation header.
+- **Sub-Second Emergency Stop**: Instant cancellation (`⏹ Stop Mission`) terminating active web crawls and LLM loops in $< 350$ ms.
+- **Non-Volatile SQLite Store**: Persistent session history (`storage/sessions.db`) surviving server reloads, with individual session delete and bulk purge.
+- **Unified Research ZIP Packager**: One-click download (`📦 Download All (.ZIP)`) packing Markdown, LaTeX, BibTeX, Audio script, knowledge graph JSON, and source ledger into a compressed archive.
 - **Real-Time Execution Timeline**: Live agent status (Planning, Searching, Crawling, Indexing, Critiquing, Synthesizing) via Server-Sent Events (SSE).
 - **Interactive GraphRAG Physics Canvas**: Explore extracted entity knowledge networks with Vis-Network.
-- **Human-in-the-Loop Steering**: Approve, pivot, or abort ongoing missions in real time.
-- **Instant Multi-Format Exporter**: One-click download for Markdown, Academic LaTeX, and in-browser NotebookLM-style Audio Podcast player.
+- **Zero-VRAM Context Distiller**: MinHash boilerplate pruning (-55% tokens) and lexical fact filtering allowing 3x-5x effective context reach on 8GB VRAM consumer laptops.
+- **Self-Healing Quick-Fix Pills**: Instant copyable terminal commands (e.g. `ollama serve`, `ollama pull llama3.2`) when local dependencies are offline.
+- **Actionable Diagnostic Drawer**: Plain-English root cause breakdowns and recommended remediation steps for any interrupted run.
 
 ---
 

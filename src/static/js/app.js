@@ -1,5 +1,5 @@
 /**
- * Main Web UI Orchestrator and Cockpit State Controller.
+ * Main Web UI Orchestrator and Cockpit State Controller (Phase 5 Hardened).
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -19,6 +19,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const formResearch = document.getElementById("form-start-research");
   const inputTopic = document.getElementById("input-topic");
   const btnStart = document.getElementById("btn-start-research");
+  const btnStop = document.getElementById("btn-stop-research");
+  const btnClearHistory = document.getElementById("btn-clear-history");
+  const btnDownloadBundle = document.getElementById("btn-download-bundle");
   const telemetryStatus = document.getElementById("telemetry-status");
   const telemetryElapsed = document.getElementById("telemetry-elapsed");
   const telemetryCost = document.getElementById("telemetry-cost");
@@ -30,11 +33,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const dossierContent = document.getElementById("dossier-content");
   const historyList = document.getElementById("history-list");
   const docFeed = document.getElementById("document-feed");
+  const quickFixHints = document.getElementById("quick-fix-hints");
+  const quickFixMessage = document.getElementById("quick-fix-message");
+  const btnCopyQuickFix = document.getElementById("btn-copy-quick-fix");
+  const diagnosticDrawer = document.getElementById("diagnostic-drawer");
+  const diagRootCause = document.getElementById("diag-root-cause");
+  const diagAction = document.getElementById("diag-action");
+  const diagStacktrace = document.getElementById("diag-stacktrace");
+  const btnCopyBugReport = document.getElementById("btn-copy-bug-report");
 
-  // 2. Load Session History
+  // 2. Initial Probing & History Load
   loadHistory();
+  checkSelfHealingHints();
 
-  // 3. Form Submit Handler
+  // 3. Form Submit Handler (Start Research)
   if (formResearch) {
     formResearch.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -46,9 +58,55 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // 4. Emergency Stop / Abort Mission Handler
+  if (btnStop) {
+    btnStop.addEventListener("click", async () => {
+      if (!activeSessionId) return;
+      btnStop.innerText = "Aborting...";
+      btnStop.disabled = true;
+
+      try {
+        await fetch(`/api/sessions/${activeSessionId}/cancel`, { method: "POST" });
+        telemetryStatus.innerText = "ABORTED";
+        telemetryStatus.className = "text-rose-400 font-bold";
+        showDiagnosticInfo({
+          root_cause: "Mission was cancelled by user via Cockpit Stop button.",
+          action: "Review constraints or restart research with a more targeted topic.",
+          stacktrace: `Session ${activeSessionId} aborted cleanly. Storage locks released.`,
+        });
+      } catch (err) {
+        console.error("Cancel failed:", err);
+      } finally {
+        resetButtonStates(false);
+        loadHistory();
+      }
+    });
+  }
+
+  // 5. Bulk History Clear Handler
+  if (btnClearHistory) {
+    btnClearHistory.addEventListener("click", async () => {
+      if (!confirm("Are you sure you want to clear all past mission history?")) return;
+      try {
+        await fetch("/api/history", { method: "DELETE" });
+        loadHistory();
+        resetExecutionUI();
+      } catch (e) {
+        console.error("Failed to clear history:", e);
+      }
+    });
+  }
+
+  // 6. Unified ZIP Bundle Download Handler
+  if (btnDownloadBundle) {
+    btnDownloadBundle.addEventListener("click", () => {
+      if (!activeSessionId) return;
+      window.location.href = `/api/sessions/${activeSessionId}/bundle`;
+    });
+  }
+
   async function startResearchSession(topic, depth) {
-    btnStart.disabled = true;
-    btnStart.innerText = "Initiating Mission...";
+    resetButtonStates(true);
     resetExecutionUI();
 
     try {
@@ -69,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
         secondsElapsed++;
         const mins = Math.floor(secondsElapsed / 60);
         const secs = secondsElapsed % 60;
-        telemetryElapsed.innerText = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+        if (telemetryElapsed) telemetryElapsed.innerText = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
       }, 1000);
 
       // Connect SSE Telemetry
@@ -77,8 +135,26 @@ document.addEventListener("DOMContentLoaded", () => {
       loadHistory();
     } catch (err) {
       alert("Error starting mission: " + err.message);
-      btnStart.disabled = false;
-      btnStart.innerText = "Start Deep Research";
+      resetButtonStates(false);
+    }
+  }
+
+  function resetButtonStates(isRunning) {
+    if (isRunning) {
+      if (btnStart) btnStart.classList.add("hidden");
+      if (btnStop) {
+        btnStop.classList.remove("hidden");
+        btnStop.disabled = false;
+        btnStop.innerText = "⏹ Stop Mission";
+      }
+    } else {
+      if (btnStop) btnStop.classList.add("hidden");
+      if (btnStart) {
+        btnStart.classList.remove("hidden");
+        btnStart.disabled = false;
+        btnStart.innerText = "Start Deep Research";
+      }
+      clearInterval(timerInterval);
     }
   }
 
@@ -90,8 +166,17 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       onStatus: (data) => {
         updateStageUI(data.stage, data.detail);
-        if (data.tokens) telemetryTokens.innerText = data.tokens.toLocaleString();
-        if (data.cost_usd !== undefined) telemetryCost.innerText = `$${data.cost_usd.toFixed(4)}`;
+        if (data.tokens && telemetryTokens) telemetryTokens.innerText = data.tokens.toLocaleString();
+        if (data.cost_usd !== undefined && telemetryCost) telemetryCost.innerText = `$${data.cost_usd.toFixed(4)}`;
+
+        if (data.stage === "FAILED" || data.stage === "ABORTED") {
+          resetButtonStates(false);
+          showDiagnosticInfo({
+            root_cause: data.detail || "Agent encountered an execution interruption.",
+            action: data.stage === "FAILED" ? "Inspect local logs or verify network connectivity." : "Mission was cancelled.",
+            stacktrace: JSON.stringify(data, null, 2),
+          });
+        }
       },
       onDocument: (data) => {
         appendDocumentCard(data);
@@ -110,9 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
         showHITLBanner(data);
       },
       onComplete: (data) => {
-        clearInterval(timerInterval);
-        btnStart.disabled = false;
-        btnStart.innerText = "Start Deep Research";
+        resetButtonStates(false);
         telemetryStatus.innerText = "COMPLETED";
         telemetryStatus.className = "text-cyan-400 font-bold";
         renderFinalDossier(data);
@@ -192,11 +275,10 @@ document.addEventListener("DOMContentLoaded", () => {
       dossierContent.innerText = markdownText;
     }
 
-    // Scroll smoothly to dossier
     dossierContainer.scrollIntoView({ behavior: "smooth" });
   }
 
-  // 4. Dossier Tab Controls
+  // Dossier Tabs
   document.querySelectorAll(".dossier-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
       document.querySelectorAll(".dossier-tab").forEach((t) => t.classList.remove("border-cyan-400", "text-cyan-400"));
@@ -207,9 +289,9 @@ document.addEventListener("DOMContentLoaded", () => {
       if (mode === "markdown") {
         dossierContent.innerHTML = marked.parse(currentReportData.markdown_content || "");
       } else if (mode === "latex") {
-        dossierContent.innerHTML = `<pre class="text-xs font-mono text-cyan-300 p-4 bg-slate-950 rounded-lg overflow-x-auto"><code>${escapeHtml(currentReportData.latex_content || "% Academic LaTeX Output\n\\documentclass{article}...")}</code></pre>`;
+        dossierContent.innerHTML = `<pre class="text-xs font-mono text-cyan-300 p-4 bg-slate-950 rounded-lg overflow-x-auto"><code>${escapeHtml(currentReportData.latex_content || "% LaTeX Paper")}</code></pre>`;
       } else if (mode === "audio") {
-        renderAudioPlayer(currentReportData.audio_script || "Host: Welcome to the deep research podcast...");
+        renderAudioPlayer(currentReportData.audio_script || "Host: Welcome to the briefing...");
       }
     });
   });
@@ -238,7 +320,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
-  // 5. Download Dossier Handlers
+  // Download Individual Files
   document.getElementById("btn-download-md")?.addEventListener("click", () => {
     if (!currentReportData) return;
     downloadFile("research_report.md", currentReportData.markdown_content || "");
@@ -259,6 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.body.removeChild(el);
   }
 
+  // History List with Individual Delete
   async function loadHistory() {
     if (!historyList) return;
     try {
@@ -267,14 +350,36 @@ document.addEventListener("DOMContentLoaded", () => {
       const items = await resp.json();
 
       historyList.innerHTML = "";
+      if (items.length === 0) {
+        historyList.innerHTML = '<div class="text-xs text-slate-500 text-center py-6">No previous missions found.</div>';
+        return;
+      }
+
       items.forEach((item) => {
         const div = document.createElement("div");
-        div.className = "p-2.5 rounded-lg text-xs hover:bg-slate-800/60 cursor-pointer flex justify-between items-center group transition";
+        div.className = "p-2 rounded-lg text-xs hover:bg-slate-900 border border-transparent hover:border-slate-800 cursor-pointer flex justify-between items-center group transition";
         div.innerHTML = `
-          <div class="truncate font-medium text-slate-300">${item.topic}</div>
-          <span class="text-[10px] text-slate-500">${item.status}</span>
+          <div class="truncate flex-1 pr-2">
+            <div class="font-medium text-slate-300 truncate">${item.topic}</div>
+            <div class="text-[10px] text-slate-500 uppercase">${item.status}</div>
+          </div>
+          <button class="btn-del-mission opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-rose-400 transition" title="Delete mission">
+            ✕
+          </button>
         `;
+
         div.onclick = () => loadPastSession(item.session_id);
+
+        const delBtn = div.querySelector(".btn-del-mission");
+        delBtn.onclick = async (e) => {
+          e.stopPropagation();
+          if (confirm(`Delete mission: "${item.topic}"?`)) {
+            await fetch(`/api/sessions/${item.session_id}`, { method: "DELETE" });
+            loadHistory();
+            if (activeSessionId === item.session_id) resetExecutionUI();
+          }
+        };
+
         historyList.appendChild(div);
       });
     } catch (e) {
@@ -291,15 +396,53 @@ document.addEventListener("DOMContentLoaded", () => {
       inputTopic.value = data.topic;
       if (data.final_report) {
         renderFinalDossier({
-          markdown_content: data.final_report.chapters?.[0]?.content_markdown || "",
-          latex_content: data.final_report.bibtex_entries?.join("\n\n") || "",
+          markdown_content: data.final_report.markdown_content || data.final_report.chapters?.[0]?.content_markdown || "",
+          latex_content: data.final_report.latex_content || "",
+          audio_script: data.final_report.audio_script || "",
         });
-      }
-      if (data.graph_nodes && data.graph_edges) {
-        graphView.updateGraph(data.graph_nodes, data.graph_edges);
       }
     } catch (e) {
       console.error("Failed to load past session:", e);
+    }
+  }
+
+  // Self-Healing Diagnostic Hints
+  async function checkSelfHealingHints() {
+    try {
+      const resp = await fetch("/api/health/ollama");
+      const data = await resp.json();
+      if (!data.ok) {
+        quickFixHints.classList.remove("hidden");
+        quickFixMessage.innerText = "Ollama is offline. Start the daemon to run missions locally.";
+        btnCopyQuickFix.innerText = "Copy: ollama serve";
+        btnCopyQuickFix.onclick = () => {
+          navigator.clipboard.writeText("ollama serve");
+          btnCopyQuickFix.innerText = "Copied!";
+          setTimeout(() => (btnCopyQuickFix.innerText = "Copy: ollama serve"), 2000);
+        };
+      } else {
+        quickFixHints.classList.add("hidden");
+      }
+    } catch (e) {
+      console.warn("Self-healing check:", e);
+    }
+  }
+
+  // Failure Diagnostics Drawer
+  function showDiagnosticInfo(err) {
+    if (!diagnosticDrawer) return;
+    diagnosticDrawer.classList.remove("hidden");
+    if (diagRootCause) diagRootCause.innerText = err.root_cause || "An unknown execution error stopped the mission.";
+    if (diagAction) diagAction.innerText = err.action || "Inspect server terminal logs.";
+    if (diagStacktrace) diagStacktrace.innerText = err.stacktrace || "No raw stacktrace provided.";
+
+    if (btnCopyBugReport) {
+      btnCopyBugReport.onclick = () => {
+        const report = `### OpenDeepResearcher Bug Report\n**Session:** ${activeSessionId}\n**Root Cause:** ${err.root_cause}\n**Action:** ${err.action}\n\`\`\`\n${err.stacktrace}\n\`\`\``;
+        navigator.clipboard.writeText(report);
+        btnCopyBugReport.innerText = "Copied!";
+        setTimeout(() => (btnCopyBugReport.innerText = "Copy Bug Report"), 2000);
+      };
     }
   }
 
@@ -307,6 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (docFeed) docFeed.innerHTML = "";
     if (dossierContainer) dossierContainer.classList.add("hidden");
     if (hitlBanner) hitlBanner.classList.add("hidden");
+    if (diagnosticDrawer) diagnosticDrawer.classList.add("hidden");
     graphView.clear();
     const stages = ["planning", "searching", "crawling", "indexing", "critiquing", "synthesizing"];
     stages.forEach((s) => {
@@ -323,4 +467,3 @@ document.addEventListener("DOMContentLoaded", () => {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 });
-

@@ -42,9 +42,10 @@ class ExplorerAgent:
         self,
         queries: list[SearchQuery],
         state: ResearchState,
+        cancel_token: asyncio.Event | None = None,
     ) -> list[ScrapedDocument]:
         """Harvest web pages and academic papers from generated queries."""
-        if not queries:
+        if not queries or (cancel_token and cancel_token.is_set()):
             return []
 
         # 1. Dispatch queries across Web Search
@@ -54,12 +55,18 @@ class ExplorerAgent:
             exclude_urls=state.visited_urls,
         )
 
+        if cancel_token and cancel_token.is_set():
+            return []
+
         # 2. Dispatch query to arXiv academic search for scholarly perspectives
         academic_results: list[SearchResult] = []
         try:
             academic_results = await self.arxiv.search(state.topic, max_results=3)
         except Exception as e:
             logger.debug("Academic search fallback: %s", str(e))
+
+        if cancel_token and cancel_token.is_set():
+            return []
 
         all_candidate_results = web_results + academic_results
         candidate_urls = [r.url for r in all_candidate_results if r.url not in state.visited_urls]
@@ -70,7 +77,11 @@ class ExplorerAgent:
         semaphore = asyncio.Semaphore(5)
 
         async def _scrape_safe(url: str) -> ScrapedDocument | None:
+            if cancel_token and cancel_token.is_set():
+                return None
             async with semaphore:
+                if cancel_token and cancel_token.is_set():
+                    return None
                 try:
                     return await self.scraper.scrape_url(url)
                 except Exception as err:

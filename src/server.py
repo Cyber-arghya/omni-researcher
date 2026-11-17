@@ -1,14 +1,15 @@
-"""FastAPI web server exposing REST endpoints, SSE telemetry, and Cockpit UI."""
+"""FastAPI web server exposing REST endpoints, SSE telemetry, Cockpit UI, and lifecycle management."""
 
 import asyncio
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -16,9 +17,11 @@ from src.agents.director import ResearchDirector
 from src.config import settings
 from src.crawler.crawler_engine import CrawlerEngine
 from src.exporters.audio_script import AudioScriptExporter
+from src.exporters.bundle_exporter import BundleExporter
 from src.exporters.latex_export import LatexExporter
 from src.hardware import HardwareProfiler
 from src.state.schemas import ResearchState
+from src.state.session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +31,11 @@ app = FastAPI(
     description="Autonomous Deep Research Agent with GraphRAG, Firecrawl scraping, and Real-Time Cockpit UI.",
 )
 
-# Active session store in memory
+# Non-volatile session store and memory caches
+session_store = SessionStore()
 SESSIONS: dict[str, ResearchState] = {}
 SESSION_REPORTS: dict[str, dict[str, Any]] = {}
+CANCEL_TOKENS: dict[str, asyncio.Event] = {}
 crawler_engine = CrawlerEngine()
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -108,6 +113,12 @@ class HardwareProfileRequest(BaseModel):
 async def _run_research_background(state: ResearchState) -> None:
     session_id = state.session_id
     director = ResearchDirector()
+    cancel_token = CANCEL_TOKENS.setdefault(session_id, asyncio.Event())
+    cancel_token.clear()
+
+    # Initial persistence in SQLite
+    session_store.upsert_session(state)
+
     try:
         # 1. Announce planning stage
         await broadcaster.broadcast(
@@ -129,8 +140,8 @@ async def _run_research_background(state: ResearchState) -> None:
             {"vram_used_gb": vram, "vram_total_gb": vram or 8.0, "ram_gb": ram},
         )
 
-        # 3. Run research loop
-        report = await director.run_research(state, unattended=True)
+        # 3. Run research loop with active cancellation token
+        report = await director.run_research(state, unattended=True, cancel_token=cancel_token)
 
         # 4. Generate formats
         md_text = report.chapters[0]["content_markdown"] if report.chapters else ""
@@ -154,14 +165,30 @@ async def _run_research_background(state: ResearchState) -> None:
             "bibtex": report.bibtex_entries,
         }
         SESSION_REPORTS[session_id] = report_payload
+        session_store.upsert_session(state, report_payload)
 
         # 5. Broadcast complete
         await broadcaster.broadcast(session_id, "report_completed", report_payload)
+
+    except asyncio.CancelledError:
+        logger.info("Session %s aborted by user cancel event.", session_id)
+        state.status = "ABORTED"
+        session_store.upsert_session(state)
+        await broadcaster.broadcast(
+            session_id,
+            "agent_status",
+            {
+                "stage": "ABORTED",
+                "detail": "Mission was aborted by user",
+                "tokens": state.total_tokens_used,
+            },
+        )
 
     except Exception as e:
         logger.exception("Research execution failed for session %s", session_id)
         state.status = "FAILED"
         state.error_message = str(e)
+        session_store.upsert_session(state)
         await broadcaster.broadcast(
             session_id,
             "agent_status",
@@ -249,6 +276,7 @@ async def start_research(
         user_constraints=request.user_constraints,
     )
     SESSIONS[session_id] = state
+    session_store.upsert_session(state)
 
     background_tasks.add_task(_run_research_background, state)
 
@@ -266,7 +294,25 @@ async def get_research_status(session_id: str) -> dict[str, Any]:
     """Retrieve real-time status, saturation index, and token metrics."""
     state = SESSIONS.get(session_id)
     if not state:
-        raise HTTPException(status_code=404, detail="Research session not found")
+        # Fallback to persistent SQLite store
+        db_session = session_store.get_session(session_id)
+        if not db_session:
+            raise HTTPException(status_code=404, detail="Research session not found")
+        return {
+            "session_id": db_session["session_id"],
+            "topic": db_session["topic"],
+            "status": db_session["status"],
+            "current_depth": db_session["current_depth"],
+            "target_depth": db_session["target_depth"],
+            "information_saturation": 1.0 if db_session["status"] == "COMPLETED" else 0.0,
+            "documents_collected": 0,
+            "total_tokens_used": db_session["total_tokens_used"],
+            "estimated_cost_usd": db_session["estimated_cost_usd"],
+            "error_message": db_session["error_message"],
+            "final_report": db_session.get("report_payload"),
+            "graph_nodes": [],
+            "graph_edges": [],
+        }
 
     report_payload = SESSION_REPORTS.get(session_id)
     return {
@@ -288,7 +334,21 @@ async def get_research_status(session_id: str) -> dict[str, Any]:
 
 @app.get("/api/history")
 async def get_history() -> list[dict[str, Any]]:
-    """Retrieve recent research session history."""
+    """Retrieve recent research session history from non-volatile SQLite store."""
+    db_items = session_store.list_sessions(limit=50)
+    if db_items:
+        return [
+            {
+                "session_id": s["session_id"],
+                "topic": s["topic"],
+                "status": s["status"],
+                "depth": s["target_depth"],
+                "documents": 0,
+                "tokens": s["total_tokens_used"],
+            }
+            for s in db_items
+        ]
+
     return [
         {
             "session_id": s.session_id,
@@ -302,6 +362,85 @@ async def get_history() -> list[dict[str, Any]]:
     ]
 
 
+@app.delete("/api/sessions/{session_id}")
+async def delete_session(session_id: str) -> dict[str, Any]:
+    """Permanently delete an individual session and its artifacts."""
+    SESSIONS.pop(session_id, None)
+    SESSION_REPORTS.pop(session_id, None)
+    deleted = session_store.delete_session(session_id)
+
+    # Clean up disk files
+    session_dir = Path("./storage/sessions") / session_id
+    if session_dir.exists():
+        shutil.rmtree(session_dir, ignore_errors=True)
+
+    return {"session_id": session_id, "deleted": deleted}
+
+
+@app.delete("/api/history")
+async def clear_all_history() -> dict[str, Any]:
+    """Bulk purge all session history records."""
+    SESSIONS.clear()
+    SESSION_REPORTS.clear()
+    count = session_store.clear_all()
+    return {"status": "CLEARED", "deleted_count": count}
+
+
+@app.post("/api/sessions/{session_id}/cancel")
+async def cancel_session(session_id: str) -> dict[str, Any]:
+    """Emergency abort signal for an in-flight research mission."""
+    token = CANCEL_TOKENS.get(session_id)
+    if token:
+        token.set()
+
+    state = SESSIONS.get(session_id)
+    if state:
+        state.status = "ABORTED"
+        session_store.upsert_session(state)
+
+    await broadcaster.broadcast(
+        session_id,
+        "agent_status",
+        {
+            "stage": "ABORTED",
+            "detail": "Emergency cancellation triggered by user",
+            "tokens": state.total_tokens_used if state else 0,
+        },
+    )
+    return {"session_id": session_id, "status": "ABORTED"}
+
+
+@app.get("/api/sessions/{session_id}/bundle")
+async def download_research_bundle(session_id: str) -> FileResponse:
+    """Download all research assets, tables, and sources as a compressed ZIP bundle."""
+    state = SESSIONS.get(session_id)
+    report_payload = SESSION_REPORTS.get(session_id)
+
+    if not state:
+        row = session_store.get_session(session_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Session not found for export bundle")
+        state = ResearchState(
+            session_id=session_id,
+            topic=row["topic"],
+            target_depth=row["target_depth"],
+            status=row["status"],
+            total_tokens_used=row["total_tokens_used"],
+            estimated_cost_usd=row["estimated_cost_usd"],
+        )
+        report_payload = row.get("report_payload", {})
+
+    zip_path = BundleExporter().export_bundle(state, report_payload)
+    if not zip_path.exists():
+        raise HTTPException(status_code=500, detail="Failed to assemble research archive bundle")
+
+    return FileResponse(
+        path=str(zip_path),
+        media_type="application/zip",
+        filename=f"research_bundle_{session_id}.zip",
+    )
+
+
 @app.post("/api/sessions/{session_id}/steer")
 async def steer_session(session_id: str, request: SteerRequest) -> dict[str, Any]:
     """Submit human-in-the-loop steering feedback."""
@@ -313,7 +452,11 @@ async def steer_session(session_id: str, request: SteerRequest) -> dict[str, Any
         state.user_constraints += f" [User Steering]: {request.feedback}"
     elif request.action == "ABORT":
         state.status = "ABORTED"
+        token = CANCEL_TOKENS.get(session_id)
+        if token:
+            token.set()
 
+    session_store.upsert_session(state)
     return {"session_id": session_id, "action": request.action, "status": state.status}
 
 

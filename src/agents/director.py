@@ -1,5 +1,6 @@
 """Director agent orchestrating the multi-agent deep research loop and HITL gates."""
 
+import asyncio
 import logging
 from collections.abc import Callable
 
@@ -35,12 +36,17 @@ class ResearchDirector:
         state: ResearchState,
         hitl_callback: Callable[[str, str], bool] | None = None,
         unattended: bool = False,
+        cancel_token: asyncio.Event | None = None,
     ) -> ResearchReport:
         """Execute the full deep research loop from planning to synthesis and verification."""
         logger.info("Starting autonomous research session: %s", state.session_id)
         state.status = "PLANNING"
 
         while state.current_depth < state.target_depth:
+            if cancel_token and cancel_token.is_set():
+                state.status = "ABORTED"
+                raise asyncio.CancelledError(f"Session {state.session_id} was aborted by user.")
+
             state.current_depth += 1
             logger.info(
                 "=== Entering Research Depth: %d / %d ===", state.current_depth, state.target_depth
@@ -51,9 +57,17 @@ class ResearchDirector:
             new_queries = await self.planner.plan_queries(state)
             state.search_queries.extend(new_queries)
 
+            if cancel_token and cancel_token.is_set():
+                state.status = "ABORTED"
+                raise asyncio.CancelledError(f"Session {state.session_id} was aborted by user.")
+
             # 2. Exploration Stage: Search, crawl, chunk, and index
             state.status = "SEARCHING"
-            await self.explorer.execute_exploration(new_queries, state)
+            await self.explorer.execute_exploration(new_queries, state, cancel_token=cancel_token)
+
+            if cancel_token and cancel_token.is_set():
+                state.status = "ABORTED"
+                raise asyncio.CancelledError(f"Session {state.session_id} was aborted by user.")
 
             # 3. Critic & Gap Evaluation Stage
             state.status = "CRITIQUING"
@@ -79,6 +93,10 @@ class ResearchDirector:
                 break
 
         # 4. Synthesis Stage: Long-form analytical dossier drafting
+        if cancel_token and cancel_token.is_set():
+            state.status = "ABORTED"
+            raise asyncio.CancelledError(f"Session {state.session_id} was aborted by user.")
+
         state.status = "SYNTHESIZING"
         report = (
             await self.synthesizer.synthesizer_report(state)

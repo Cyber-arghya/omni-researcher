@@ -86,24 +86,42 @@
     
     <!-- LEFT SIDEBAR: Missions History & Controls -->
     <aside class="w-64 border-r border-slate-800/80 bg-slate-950/50 flex flex-col hidden lg:flex">
-      <div class="p-4 border-b border-slate-800/80 flex items-center justify-between">
-        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Mission History</span>
-        <button id="btn-new-mission" onclick="location.reload()" class="text-xs px-2.5 py-1 rounded bg-cyan-950 text-cyan-400 hover:bg-cyan-900 border border-cyan-800 transition">
-          + New
-        </button>
+      <div class="p-3 border-b border-slate-800/80 flex items-center justify-between">
+        <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Missions</span>
+        <div class="flex items-center gap-1.5">
+          <button id="btn-clear-history" class="text-[11px] px-2 py-0.5 rounded bg-slate-900 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 border border-slate-800 transition" title="Clear all past mission history">
+            Clear
+          </button>
+          <button id="btn-new-mission" onclick="location.reload()" class="text-[11px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 hover:bg-cyan-900 border border-cyan-800 transition">
+            + New
+          </button>
+        </div>
       </div>
-      <div id="history-list" class="flex-1 overflow-y-auto p-3 space-y-1.5 custom-scrollbar">
-        <!-- Rendered dynamically by app.js -->
+      <div id="history-list" class="flex-1 overflow-y-auto p-2.5 space-y-1.5 custom-scrollbar">
+        <!-- Rendered dynamically by app.js with delete button per card -->
         <div class="text-xs text-slate-500 text-center py-6">No previous missions found.</div>
       </div>
-      <div class="p-3 border-t border-slate-800/80 text-[11px] text-slate-500 text-center">
-        Zero-Node FastAPI Cockpit
+      <div class="p-2.5 border-t border-slate-800/80 text-[10px] text-slate-500 text-center">
+        SQLite Non-Volatile Store
       </div>
     </aside>
 
     <!-- CENTER COCKPIT: Main Launchpad & Live Execution Feed -->
-    <main class="flex-1 overflow-y-auto p-6 flex flex-col gap-6 custom-scrollbar">
+    <main class="flex-1 overflow-y-auto p-6 flex flex-col gap-5 custom-scrollbar">
       
+      <!-- 0. SELF-HEALING DIAGNOSTIC HINT PILLS (Displayed dynamically when services are down) -->
+      <div id="quick-fix-hints" class="hidden p-3.5 rounded-xl bg-amber-950/30 border border-amber-600/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2 text-amber-300">
+          <span class="text-base">💡</span>
+          <span id="quick-fix-message">Dependency alert detected.</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="btn-copy-quick-fix" class="px-3 py-1 bg-amber-600/80 hover:bg-amber-500 text-slate-950 font-mono font-bold rounded-lg transition" title="Click to copy suggested terminal command">
+            Copy Fix
+          </button>
+        </div>
+      </div>
+
       <!-- 1. LAUNCHPAD / MISSION INTAKE FORM -->
       <section class="p-6 rounded-2xl bg-gradient-to-b from-slate-900/80 to-slate-950/80 border border-slate-800 shadow-xl backdrop-blur-sm">
         <form id="form-start-research" class="space-y-4">
@@ -144,14 +162,24 @@
               </label>
             </div>
 
-            <!-- Start Button -->
-            <button 
-              type="submit" 
-              id="btn-start-research" 
-              class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/25 transition active:scale-95 disabled:opacity-50"
-            >
-              Start Deep Research
-            </button>
+            <!-- Start & Emergency Abort Buttons -->
+            <div class="flex items-center gap-2">
+              <button 
+                type="button" 
+                id="btn-stop-research" 
+                class="hidden px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm shadow-lg shadow-rose-600/30 transition active:scale-95 flex items-center gap-1.5"
+                title="Immediately stop and abort the running mission"
+              >
+                ⏹ Stop Mission
+              </button>
+              <button 
+                type="submit" 
+                id="btn-start-research" 
+                class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/25 transition active:scale-95 disabled:opacity-50"
+              >
+                Start Deep Research
+              </button>
+            </div>
           </div>
         </form>
       </section>
@@ -221,13 +249,43 @@
             <button class="dossier-tab text-xs font-semibold pb-2 border-b-2 border-transparent text-slate-400 hover:text-slate-200 tracking-wider uppercase flex items-center gap-1.5" data-mode="audio">🎙️ Audio Podcast</button>
           </div>
           <div class="flex items-center gap-2">
-            <button id="btn-download-md" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition">Download .MD</button>
-            <button id="btn-download-tex" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition">Download .TEX</button>
+            <!-- Unified ZIP Download Button -->
+            <button id="btn-download-bundle" class="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-bold text-slate-950 transition flex items-center gap-1.5" title="Download all Markdown, LaTeX, Audio, Graph, and Sources in one ZIP file">
+              📦 Download All (.ZIP)
+            </button>
+            <button id="btn-download-md" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition">.MD</button>
+            <button id="btn-download-tex" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 transition">.TEX</button>
           </div>
         </div>
 
         <div id="dossier-content" class="prose prose-invert prose-cyan max-w-none text-slate-200 text-sm leading-relaxed p-4 bg-slate-950/80 rounded-xl overflow-x-auto min-h-[300px]">
           <!-- Rendered dynamically -->
+        </div>
+      </section>
+
+      <!-- 5. COLLAPSIBLE DIAGNOSTIC & FAILURE LOG DRAWER (Hidden unless error or expanded) -->
+      <section id="diagnostic-drawer" class="hidden rounded-xl bg-slate-900 border border-slate-800 p-4 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+            <span class="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+            <span id="diag-error-title" class="text-rose-400">Execution Error Diagnostic</span>
+          </div>
+          <button id="btn-copy-bug-report" class="text-[11px] px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 transition">
+            Copy Bug Report
+          </button>
+        </div>
+        <div class="p-3 rounded-lg bg-slate-950 border border-slate-800/80 text-xs space-y-2">
+          <div class="text-slate-300">
+            <strong class="text-rose-400">Root Cause:</strong> 
+            <span id="diag-root-cause">Unknown execution failure.</span>
+          </div>
+          <div class="text-slate-400">
+            <strong class="text-cyan-400">Recommended Action:</strong> 
+            <span id="diag-action">Check server logs or reduce research depth.</span>
+          </div>
+          <div class="pt-1">
+            <pre id="diag-stacktrace" class="text-[10px] font-mono text-slate-400 bg-slate-900 p-2 rounded overflow-x-auto max-h-32"></pre>
+          </div>
         </div>
       </section>
 
@@ -382,4 +440,3 @@
   <script src="/static/js/app.js"></script>
 </body>
 </html>
-
