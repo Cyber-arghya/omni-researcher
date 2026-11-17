@@ -19,8 +19,20 @@ class ModelRouter:
 
     def __init__(self, llm_client: LLMClient | None = None) -> None:
         self.client = llm_client or LLMClient()
-        self.fast_model = settings.llm_fast_model
-        self.deep_model = settings.llm_deep_model
+        if settings.llm_provider == "nvidia":
+            self.fast_model = (
+                settings.nvidia_model
+                if settings.llm_fast_model == "llama3.2:latest"
+                else settings.llm_fast_model
+            )
+            self.deep_model = (
+                settings.nvidia_model
+                if settings.llm_deep_model == "deepseek-r1:latest"
+                else settings.llm_deep_model
+            )
+        else:
+            self.fast_model = settings.llm_fast_model
+            self.deep_model = settings.llm_deep_model
 
     def _check_budget(self, state: ResearchState) -> None:
         """Enforce cost and token caps before making an LLM call."""

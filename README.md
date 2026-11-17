@@ -107,8 +107,8 @@ flowchart TD
 ### Installation (with `uv`)
 ```bash
 # Clone repository
-git clone https://github.com/opendeepresearcher/opendeepresearcher.git
-cd opendeepresearcher
+git clone https://github.com/Cyber-arghya/omni-researcher.git
+cd omni-researcher
 
 # Install dependencies using uv
 uv sync
@@ -122,11 +122,133 @@ cp .env.example .env
 
 ### Run Autonomous Research via CLI
 ```bash
-# 1. Run 100% locally with Ollama ($0 budget)
+# 1. Run 100% locally with Ollama ($0 compute budget)
 uv run opendeepresearcher "Commercial Viability of Solid-State Batteries in EVs by 2028" --local
 
-# 2. Run with deep recursion (Depth 3) and unattended mode
+# 2. Run with NVIDIA NIM (e.g. Nemotron-3 550B reasoning model)
+uv run opendeepresearcher "Next-Generation Perovskite Solar Cell Degradation Mechanisms"
+
+# 3. Run with deep recursion (Depth 3) and unattended mode
 uv run opendeepresearcher "Mechanisms of Action of GLP-1 Receptor Agonists in Neurodegenerative Diseases" --depth 3 --unattended
+```
+
+---
+
+## 🔑 Complete API Key Setup Guide
+
+OpenDeepResearcher is engineered around a **zero-leakage, zero-cost-by-default architecture**. You can run the entire deep research pipeline without paying a single cent, or connect enterprise models like NVIDIA NIM and OpenAI.
+
+> [!IMPORTANT]
+> **Security Guarantee**: Never commit your real `.env` file to Git. OpenDeepResearcher automatically isolates `.env` in `.gitignore`. All keys are loaded at runtime through environment variables.
+
+### 1. 100% Free Local Execution (Ollama / LM Studio)
+Run state-of-the-art models completely offline on your own GPU/CPU with $0 API costs:
+1. Install [Ollama](https://ollama.ai) and pull the recommended research models:
+   ```bash
+   ollama pull llama3.2:latest     # Fast query expansion & filtering
+   ollama pull deepseek-r1:latest  # Deep critique & synthesis
+   ollama pull llama3.2-vision:11b # Multi-modal chart & diagram analysis
+   ```
+2. Configure `.env`:
+   ```ini
+   LLM_PROVIDER=ollama
+   LLM_BASE_URL=http://localhost:11434/v1
+   LLM_FAST_MODEL=llama3.2:latest
+   LLM_DEEP_MODEL=deepseek-r1:latest
+   ```
+3. Run with `--local`:
+   ```bash
+   uv run opendeepresearcher "Quantum Computing Fault Tolerance Benchmarks" --local
+   ```
+
+### 2. NVIDIA NIM & Enterprise Reasoning Models (Nemotron)
+NVIDIA provides 1,000 free API credits to developers on [build.nvidia.com](https://build.nvidia.com):
+1. Sign in to NVIDIA build, select **Nvidia Nemotron** or **Llama-3.1-405B**, and generate your API key (`nvapi-...`).
+2. Add to your local `.env`:
+   ```ini
+   LLM_PROVIDER=nvidia
+   NVIDIA_API_KEY=nvapi-your-actual-key-here
+   NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+   NVIDIA_MODEL=nvidia/nemotron-3-ultra-550b-a55b
+   ```
+3. The client natively extracts `reasoning_content` (thinking tokens) and applies `enable_thinking: true` automatically.
+
+### 3. Web Search & Academic Literature APIs
+| Engine / API | Required Key? | Setup Instructions |
+|---|---|---|
+| **DuckDuckGo** | **No** (100% Free) | Default search engine. Works immediately out of the box with zero configuration. |
+| **arXiv API** | **No** (100% Free) | Native Atom XML search for Physics, CS, and Math pre-prints. |
+| **Crossref DOI** | **No** (100% Free) | Resolves and verifies peer-reviewed scientific literature across all journals. |
+| **PubMed NCBI** | **No** (Optional) | Add `NCBI_PUBMED_API_KEY` in `.env` only if you need >3 requests/second rate limits. |
+| **Semantic Scholar** | **No** (Optional) | Add `SEMANTIC_SCHOLAR_API_KEY` in `.env` for academic citation metrics. |
+| **Tavily Search** | Optional (1,000 free) | Set `SEARCH_PROVIDER=tavily` and `TAVILY_API_KEY=tvly-...` in `.env`. |
+
+### 4. Frontier Cloud APIs (Gemini, OpenAI, Claude, DeepSeek)
+```ini
+# OpenAI
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+
+# Google Gemini
+LLM_PROVIDER=gemini
+GEMINI_API_KEY=AIzaSy...
+
+# DeepSeek
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=sk-...
+```
+
+---
+
+## 🐳 Production Docker Deployment & Model Bridging
+
+OpenDeepResearcher includes a security-hardened multi-stage Docker image operating as a non-privileged user (`researcher`).
+
+### Scenario A: Running Docker with Cloud APIs or NVIDIA NIM
+Pass your local `.env` securely at container startup without baking keys into image layers:
+
+```bash
+# 1. Build the production container image
+docker build -t omni-researcher:latest .
+
+# 2. Run research mission via Docker with .env credentials
+docker run --rm -it \
+  --env-file .env \
+  -v "${PWD}/reports:/app/reports" \
+  -v "${PWD}/storage:/app/storage" \
+  omni-researcher:latest \
+  opendeepresearcher "Solid-State Battery Energy Density Benchmarks 2026"
+```
+
+### Scenario B: Connecting Docker Container to Local Host Ollama
+When running OpenDeepResearcher inside Docker while your Ollama runs on the host machine:
+
+1. **Configure Host Ollama to accept Docker requests**:
+   - **Linux**: Edit `/etc/systemd/system/ollama.service.d/override.conf` and set `Environment="OLLAMA_HOST=0.0.0.0"`, then `systemctl restart ollama`.
+   - **Windows / macOS**: Ollama automatically listens for requests. Ensure firewall permits connection from Docker.
+2. **Configure `.env` for Docker**:
+   ```ini
+   LLM_PROVIDER=ollama
+   LLM_BASE_URL=http://host.docker.internal:11434/v1
+   ```
+3. **Run with Host Network Bridge**:
+   ```bash
+   docker run --rm -it \
+     --add-host=host.docker.internal:host-gateway \
+     --env-file .env \
+     -v "${PWD}/reports:/app/reports" \
+     omni-researcher:latest \
+     opendeepresearcher "Advances in Solid Electrolytes" --local
+   ```
+
+### Scenario C: Using Docker Compose
+Run the FastAPI server or batch research missions effortlessly:
+```bash
+# Start background server with compose
+docker compose up -d
+
+# Execute CLI research job inside compose environment
+docker compose run --rm researcher opendeepresearcher "CRISPR Therapeutics in 2026"
 ```
 
 ---

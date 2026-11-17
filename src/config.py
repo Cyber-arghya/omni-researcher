@@ -18,7 +18,15 @@ class Settings(BaseSettings):
 
     # --- LLM Provider Selection ---
     llm_provider: Literal[
-        "ollama", "openai", "gemini", "anthropic", "groq", "deepseek", "lmstudio", "custom"
+        "ollama",
+        "openai",
+        "gemini",
+        "anthropic",
+        "groq",
+        "deepseek",
+        "nvidia",
+        "lmstudio",
+        "custom",
     ] = Field(default="ollama", description="Primary LLM provider backend")
     llm_fast_model: str = Field(
         default="llama3.2:latest",
@@ -39,6 +47,17 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None)
     groq_api_key: str | None = Field(default=None)
     deepseek_api_key: str | None = Field(default=None)
+    nvidia_api_key: str | None = Field(
+        default=None, description="NVIDIA NIM API key (e.g. nvapi-...)"
+    )
+    nvidia_base_url: str = Field(
+        default="https://integrate.api.nvidia.com/v1",
+        description="NVIDIA NIM OpenAI-compatible API base URL",
+    )
+    nvidia_model: str = Field(
+        default="nvidia/nemotron-3-ultra-550b-a55b",
+        description="NVIDIA NIM model identifier",
+    )
 
     # --- Vision & Multi-Modal ---
     vision_enabled: bool = Field(default=True, description="Enable chart and diagram extraction")

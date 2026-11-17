@@ -52,6 +52,12 @@ class LLMClient:
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                 api_key=settings.gemini_api_key or "missing-key",
             )
+        elif self.provider == "nvidia":
+            # NVIDIA NIM API (OpenAI-compatible)
+            self.client = AsyncOpenAI(
+                base_url=settings.nvidia_base_url,
+                api_key=settings.nvidia_api_key or "missing-key",
+            )
         else:
             # Custom / OpenAI fallback
             self.client = AsyncOpenAI(
@@ -86,8 +92,18 @@ class LLMClient:
                 if response_format:
                     kwargs["response_format"] = response_format
 
+                # Enable thinking template for reasoning models (Nemotron, DeepSeek-R1)
+                if any(k in model.lower() for k in ["nemotron", "thinking"]):
+                    kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": True}}
+
                 response = await self.client.chat.completions.create(**kwargs)
-                content = response.choices[0].message.content or ""
+                msg = response.choices[0].message
+                content = msg.content or ""
+                # Support reasoning models returning content in reasoning_content field
+                reasoning = getattr(msg, "reasoning_content", None)
+                if not content and reasoning:
+                    content = str(reasoning)
+
                 prompt_tokens = response.usage.prompt_tokens if response.usage else 0
                 completion_tokens = response.usage.completion_tokens if response.usage else 0
 
