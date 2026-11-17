@@ -1,6 +1,6 @@
 # OpenDeepResearcher 🔬🚀
 
-[![CI/CD Pipeline](https://github.com/opendeepresearcher/opendeepresearcher/actions/workflows/ci.yml/badge.svg)](https://github.com/opendeepresearcher/opendeepresearcher/actions/workflows/ci.yml)
+[![CI/CD Pipeline](https://github.com/Cyber-arghya/omni-researcher/actions/workflows/ci.yml/badge.svg)](https://github.com/Cyber-arghya/omni-researcher/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
@@ -100,6 +100,17 @@ flowchart TD
 - **Executive Markdown**: Clean GitHub-flavored markdown with numbered footnotes.
 - **Audio Script**: NotebookLM-style dialogue between Host and Co-host summarizing key discoveries.
 
+### 9. 🎛️ Autonomous Dynamic Hardware Profiler
+- **Hardware Probing**: Automatically inspects host GPU VRAM and System RAM (via `torch.cuda` and `psutil`).
+- **Dynamic 4-Tier Scaling**: Seamlessly routes between `entry_8gb` (8GB VRAM / 16GB RAM laptops), `enthusiast_16gb` (RTX 4070/4080), `workstation_24gb_plus` (RTX 4090 / 64GB RAM), and `cloud_hybrid`.
+- **Zero OOM Invariant**: Prevents CUDA out-of-memory crashes on consumer laptops while unleashing 12-16 parallel crawlers and 32B models on high-end workstations.
+
+### 10. 🌐 Interactive Web UI Cockpit (FastAPI + SSE)
+- **Zero-Build Architecture**: Modern Single-Page Application (SPA) served directly from FastAPI static assets (`http://localhost:8000`) with zero `node_modules` required.
+- **Live Agent Timeline**: Real-time progress cards powered by Server-Sent Events (SSE).
+- **Interactive Graph Mesh**: Physics-based Vis-Network canvas visualizing GraphRAG entities, predicates, and communities.
+- **Active HITL Banner**: Interactive one-click steering and outline approval directly in the browser.
+
 ---
 
 ## ⚡ Quickstart
@@ -142,24 +153,47 @@ OpenDeepResearcher is engineered around a **zero-leakage, zero-cost-by-default a
 > **Security Guarantee**: Never commit your real `.env` file to Git. OpenDeepResearcher automatically isolates `.env` in `.gitignore`. All keys are loaded at runtime through environment variables.
 
 ### 1. 100% Free Local Execution (Ollama / LM Studio)
-Run state-of-the-art models completely offline on your own GPU/CPU with $0 API costs:
-1. Install [Ollama](https://ollama.ai) and pull the recommended research models:
-   ```bash
-   ollama pull llama3.2:latest     # Fast query expansion & filtering
-   ollama pull deepseek-r1:latest  # Deep critique & synthesis
-   ollama pull llama3.2-vision:11b # Multi-modal chart & diagram analysis
-   ```
-2. Configure `.env`:
-   ```ini
-   LLM_PROVIDER=ollama
-   LLM_BASE_URL=http://localhost:11434/v1
-   LLM_FAST_MODEL=llama3.2:latest
-   LLM_DEEP_MODEL=deepseek-r1:latest
-   ```
-3. Run with `--local`:
-   ```bash
-   uv run opendeepresearcher "Quantum Computing Fault Tolerance Benchmarks" --local
-   ```
+Run state-of-the-art models completely offline on your own GPU/CPU with $0 API costs. OpenDeepResearcher dynamically tunes model weights, KV cache, and crawler concurrency based on your detected hardware:
+
+#### 🎛️ Dynamic Hardware Tiers
+
+| Hardware Profile | Physical Specs | Recommended Models (Fast / Deep) | Embeddings | Concurrency |
+|---|---|---|---|---|
+| **`entry_8gb`** | **<= 8GB VRAM / 16GB RAM** *(Laptops)* | `llama3.2:3b` / `qwen2.5:7b` (or `deepseek-r1:7b`) | CPU-Pinned (`nomic-embed-text`) | 3 crawlers |
+| **`enthusiast_16gb`** | **12GB-16GB VRAM / 32GB RAM** *(RTX 4070/4080)* | `llama3.1:8b` / `qwen2.5:14b` (or `deepseek-r1:14b`) | GPU `bge-m3` (FP16) | 6 crawlers |
+| **`workstation_24gb_plus`** | **24GB+ VRAM / 64GB+ RAM** *(RTX 4090 / Mac Studio)* | `qwen2.5:14b` / `qwen2.5:32b` (or `deepseek-r1:32b`) | High-Batch `bge-m3` | 12-16 crawlers |
+| **`cloud_hybrid`** | **Any System** *(Even a $5 VPS)* | Offloaded to NVIDIA NIM (`nemotron-3-ultra-550b`) | CPU / Cloud | 6 crawlers |
+
+#### Quick Ollama Pull Commands by Hardware:
+
+```bash
+# For 8GB VRAM / 16GB RAM (Safe, zero-OOM, ultra-fast):
+ollama pull llama3.2:3b
+ollama pull qwen2.5:7b
+ollama pull nomic-embed-text
+
+# For 16GB VRAM / 32GB RAM (High reasoning capacity):
+ollama pull llama3.1:8b
+ollama pull qwen2.5:14b
+ollama pull llama3.2-vision:11b
+
+# For 24GB+ VRAM Workstations (Maximum depth):
+ollama pull qwen2.5:14b
+ollama pull qwen2.5:32b
+```
+
+#### Configure `.env`:
+```ini
+LLM_PROVIDER=ollama
+LLM_BASE_URL=http://localhost:11434/v1
+HARDWARE_PROFILE=auto   # Automatically detects host VRAM & RAM
+EMBEDDING_DEVICE=auto   # auto | cpu | cuda
+```
+
+Run with `--local`:
+```bash
+uv run opendeepresearcher "Quantum Computing Fault Tolerance Benchmarks" --local
+```
 
 ### 2. NVIDIA NIM & Enterprise Reasoning Models (Nemotron)
 NVIDIA provides 1,000 free API credits to developers on [build.nvidia.com](https://build.nvidia.com):
