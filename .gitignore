@@ -37,6 +37,9 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
+# Planning & Architectural Drafts
+plan*.md
+
 # OS Specific
 .DS_Store
 Thumbs.db
