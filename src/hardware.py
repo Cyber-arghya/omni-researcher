@@ -128,4 +128,3 @@ class HardwareProfiler:
             *cls.probe_system_resources()[:2],
         )
         return preset
-
