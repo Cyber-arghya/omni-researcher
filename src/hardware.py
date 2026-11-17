@@ -1,6 +1,7 @@
 """Autonomous hardware detection and dynamic resource allocation profiler."""
 
 import logging
+import subprocess
 from typing import Any, Literal
 
 import psutil
@@ -64,6 +65,30 @@ class HardwareProfiler:
     """Probes physical host resources and dynamically determines optimal execution parameters."""
 
     @classmethod
+    def get_gpu_name(cls) -> str:
+        """Retrieve the GPU model name via PyTorch or nvidia-smi."""
+        if _TORCH_AVAILABLE and torch.cuda.is_available():
+            try:
+                return str(torch.cuda.get_device_name(0))
+            except Exception:
+                pass
+
+        try:
+            res = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=2.0,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip().splitlines()[0].strip()
+        except Exception:
+            pass
+
+        return "Integrated / CPU"
+
+    @classmethod
     def probe_system_resources(cls) -> tuple[float, float, int]:
         """Inspect host physical resources.
 
@@ -74,12 +99,34 @@ class HardwareProfiler:
         cpu_cores = psutil.cpu_count(logical=True) or 4
 
         vram_gb = 0.0
+        # 1. Try PyTorch CUDA if available
         if _TORCH_AVAILABLE and torch.cuda.is_available():
             try:
                 vram_bytes = torch.cuda.get_device_properties(0).total_memory
                 vram_gb = vram_bytes / (1024**3)
             except Exception as e:
                 logger.debug("CUDA memory query failed: %s", str(e))
+
+        # 2. Hardware fallback: Query nvidia-smi directly (e.g. for CPU-only torch wheels)
+        if vram_gb == 0.0:
+            try:
+                res = subprocess.run(
+                    [
+                        "nvidia-smi",
+                        "--query-gpu=memory.total",
+                        "--format=csv,noheader,nounits",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=2.0,
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    first_line = res.stdout.strip().splitlines()[0]
+                    vram_mib = float(first_line.strip())
+                    vram_gb = vram_mib / 1024.0
+            except Exception as e:
+                logger.debug("nvidia-smi probe failed: %s", str(e))
 
         return vram_gb, ram_gb, cpu_cores
 

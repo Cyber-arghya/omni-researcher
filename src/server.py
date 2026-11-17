@@ -490,6 +490,7 @@ async def get_research_report(session_id: str) -> dict[str, Any]:
 async def get_hardware_status() -> dict[str, Any]:
     """Return host hardware metrics, detected profile, and dynamic limits."""
     vram_gb, ram_gb, cpu_cores = HardwareProfiler.probe_system_resources()
+    gpu_name = HardwareProfiler.get_gpu_name()
     preset = HardwareProfiler.get_tier_config(
         requested_profile=settings.hardware_profile, provider=settings.llm_provider
     )
@@ -499,6 +500,7 @@ async def get_hardware_status() -> dict[str, Any]:
         "vram_gb": vram_gb,
         "ram_gb": ram_gb,
         "cpu_cores": cpu_cores,
+        "gpu_name": gpu_name,
         "preset": {
             "name": active_tier,
             "description": preset.get("description", ""),

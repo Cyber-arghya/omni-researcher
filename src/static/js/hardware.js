@@ -72,7 +72,10 @@ class HardwareController {
     const descElem = document.getElementById("diag-tier-desc");
 
     if (tierElem) tierElem.innerText = data.active_tier.toUpperCase();
-    if (vramElem) vramElem.innerText = `${data.vram_gb.toFixed(1)} GB`;
+    if (vramElem) {
+      const gpuLabel = data.gpu_name && data.gpu_name !== "Integrated / CPU" ? ` (${data.gpu_name})` : "";
+      vramElem.innerText = `${data.vram_gb.toFixed(1)} GB${gpuLabel}`;
+    }
     if (ramElem) ramElem.innerText = `${data.ram_gb.toFixed(1)} GB`;
     if (cpuElem) cpuElem.innerText = `${data.cpu_cores} Cores`;
     if (descElem && data.preset) descElem.innerText = data.preset.description || "";
