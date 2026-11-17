@@ -1,11 +1,13 @@
-"""Unit tests for the multi-engine search dispatcher and deduplication."""
+"""Comprehensive unit tests for the multi-engine search dispatcher, deduplication, and fallback chains."""
+
+from unittest.mock import AsyncMock
 
 from src.search.engine import SearchEngineDispatcher
 from src.state.schemas import SearchQuery, SearchResult
 
 
-async def test_search_batch_deduplication() -> None:
-    """Verify that identical URLs from different queries are properly deduplicated."""
+async def test_search_batch_deduplication_and_trailing_slashes() -> None:
+    """Verify that identical URLs with differing trailing slashes are properly deduplicated."""
     dispatcher = SearchEngineDispatcher()
 
     mock_results_1 = [
@@ -60,28 +62,99 @@ async def test_search_batch_deduplication() -> None:
     }
 
 
-async def test_search_single_fallback() -> None:
-    """Verify fallback to secondary engine when primary returns empty."""
+async def test_search_batch_exclude_urls() -> None:
+    """Verify that search_batch respects exclude_urls and ignores pre-visited pages."""
     dispatcher = SearchEngineDispatcher()
-    dispatcher.primary_provider = "ddg"
+    mock_results = [
+        SearchResult(
+            title="Known Page",
+            url="https://example.com/known",
+            snippet="Old",
+            source_engine="ddg",
+        ),
+        SearchResult(
+            title="New Page",
+            url="https://example.com/new",
+            snippet="Fresh",
+            source_engine="ddg",
+        ),
+    ]
+    dispatcher.search_single = AsyncMock(return_value=mock_results)  # type: ignore[method-assign]
 
-    async def mock_ddg_search(query: str, max_results: int = 6) -> list[SearchResult]:
-        return []
+    queries = [SearchQuery(query="test query", perspective="General")]
+    exclude = {"https://example.com/known"}
 
-    async def mock_searxng_search(query: str, max_results: int = 6) -> list[SearchResult]:
+    batch = await dispatcher.search_batch(queries, exclude_urls=exclude)
+    assert len(batch) == 1
+    assert batch[0].url == "https://example.com/new"
+
+
+async def test_search_batch_empty_and_exception_handling() -> None:
+    """Verify that search_batch handles empty queries and sub-task exceptions cleanly."""
+    dispatcher = SearchEngineDispatcher()
+
+    # Empty query list returns empty list
+    assert await dispatcher.search_batch([]) == []
+
+    # One query succeeds, one query throws an exception
+    async def flaky_search(query: str, max_results: int = 6) -> list[SearchResult]:
+        if "fail" in query:
+            raise ConnectionError("DNS failure")
         return [
             SearchResult(
-                title="SearXNG Result",
-                url="https://searxng.org/result",
+                title="Good",
+                url="https://example.com/good",
+                snippet="OK",
+                source_engine="ddg",
+            )
+        ]
+
+    dispatcher.search_single = flaky_search  # type: ignore[method-assign]
+    queries = [
+        SearchQuery(query="fail query", perspective="Test"),
+        SearchQuery(query="good query", perspective="Test"),
+    ]
+
+    batch = await dispatcher.search_batch(queries)
+    assert len(batch) == 1
+    assert batch[0].url == "https://example.com/good"
+
+
+async def test_search_single_fallbacks() -> None:
+    """Verify multi-tier fallbacks across DDG, SearXNG, and Tavily."""
+    dispatcher = SearchEngineDispatcher()
+
+    # 1. DDG -> SearXNG fallback
+    dispatcher.primary_provider = "ddg"
+    dispatcher.ddg.search = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    dispatcher.searxng.search = AsyncMock(  # type: ignore[method-assign]
+        return_value=[
+            SearchResult(
+                title="SearXNG",
+                url="https://searxng.org/1",
                 snippet="Found",
                 source_engine="searxng",
             )
         ]
+    )
 
-    dispatcher.ddg.search = mock_ddg_search  # type: ignore[method-assign]
-    dispatcher.searxng.search = mock_searxng_search  # type: ignore[method-assign]
-
-    results = await dispatcher.search_single("fallback test")
+    results = await dispatcher.search_single("test query")
     assert len(results) == 1
     assert results[0].source_engine == "searxng"
-    assert results[0].url == "https://searxng.org/result"
+
+    # 2. Tavily -> DDG fallback
+    dispatcher.primary_provider = "tavily"
+    dispatcher.tavily.search = AsyncMock(return_value=[])  # type: ignore[method-assign]
+    dispatcher.ddg.search = AsyncMock(  # type: ignore[method-assign]
+        return_value=[
+            SearchResult(
+                title="DDG Fallback",
+                url="https://ddg.gg/1",
+                snippet="Found",
+                source_engine="ddg",
+            )
+        ]
+    )
+    results_tavily = await dispatcher.search_single("tavily query")
+    assert len(results_tavily) == 1
+    assert results_tavily[0].source_engine == "ddg"

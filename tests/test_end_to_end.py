@@ -1,4 +1,4 @@
-"""End-to-end integration test verifying the full deep research loop and multi-format exporters."""
+"""End-to-end integration test verifying the full deep research loop, multi-format exporters, and hallucination audits."""
 
 from pathlib import Path
 
@@ -18,8 +18,8 @@ from src.state.schemas import (
 )
 
 
-def test_end_to_end_research_pipeline(tmp_path: Path) -> None:
-    """Verify that a research session generates grounded reports and multi-format files."""
+def test_end_to_end_research_pipeline_happy_path(tmp_path: Path) -> None:
+    """Verify that a grounded research session generates valid multi-format export files."""
     state = ResearchState(
         session_id="integration_test_001",
         topic="Next-Gen Solid-State Battery Solid Electrolyte Benchmarks",
@@ -100,3 +100,49 @@ def test_end_to_end_research_pipeline(tmp_path: Path) -> None:
     hallucination_metrics = evaluate_hallucination_index(mock_report)
     assert hallucination_metrics["grounding_confidence_score"] == 1.0
     assert hallucination_metrics["phantom_unmatched_citations"] == 0
+
+
+def test_hallucination_index_catches_phantom_citations() -> None:
+    """Verify that evaluate_hallucination_index catches fabricated/phantom citations."""
+    hallucinated_report = ResearchReport(
+        topic="Cold Fusion",
+        title="Cold Fusion Advances",
+        executive_summary="Unverified room temperature fusion claims.",
+        chapters=[
+            {
+                "chapter_title": "Claims",
+                "content_markdown": "We observed anomalous heat [^1] and massive neutron flux [^99] without shielding [^42].",
+            }
+        ],
+        # Only source 1 is present in the bibliography; [^99] and [^42] are fabricated!
+        citations=[
+            {
+                "id": "[^1]",
+                "url": "https://example.com/source1",
+                "title": "Legit Source",
+                "snippet": "Anomalous heat.",
+            }
+        ],
+        model_used="hallucinating-llm",
+        total_sources_consulted=1,
+    )
+
+    metrics = evaluate_hallucination_index(hallucinated_report)
+    assert metrics["phantom_unmatched_citations"] == 2
+    assert metrics["grounding_confidence_score"] < 1.0
+
+
+def test_citation_coverage_on_empty_report() -> None:
+    """Verify that citation coverage audit handles empty reports gracefully without division by zero."""
+    empty_report = ResearchReport(
+        topic="Empty Topic",
+        title="Empty",
+        executive_summary="",
+        chapters=[],
+        citations=[],
+        model_used="test",
+        total_sources_consulted=0,
+    )
+    metrics = evaluate_citation_coverage(empty_report)
+    assert metrics["total_sources"] == 0
+    assert metrics["cited_sentences"] == 0

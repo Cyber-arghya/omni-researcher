@@ -1,6 +1,7 @@
 """AST pre-flight verification, path sandbox confinement, and URL security checks."""
 
 import ast
+import ipaddress
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
@@ -99,18 +100,33 @@ def verify_url_safety(url: str) -> bool:
         if not hostname:
             return False
 
-        # Disallow loopback, link-local, and cloud metadata addresses
-        blocked_hosts = [
+        # Disallow loopback, link-local, and cloud metadata hostnames
+        blocked_named_hosts = {
             "localhost",
-            "127.0.0.1",
-            "0.0.0.0",
-            "169.254.169.254",  # AWS/GCP/Azure instance metadata
             "metadata.google.internal",
-        ]
-        return not (
-            hostname in blocked_hosts
-            or hostname.startswith("192.168.")
-            or hostname.startswith("10.")
-        )
+            "instance-data",
+        }
+        if hostname in blocked_named_hosts:
+            return False
+
+        # Normalize IPv6 brackets if present
+        clean_host = hostname.strip("[]")
+
+        # Check IP-based private, loopback, link-local, reserved ranges
+        try:
+            ip = ipaddress.ip_address(clean_host)
+            if (
+                ip.is_private
+                or ip.is_loopback
+                or ip.is_link_local
+                or ip.is_reserved
+                or ip.is_unspecified
+            ):
+                return False
+        except ValueError:
+            # Hostname is a domain name (not an IP literal)
+            pass
+
+        return True
     except Exception:
         return False

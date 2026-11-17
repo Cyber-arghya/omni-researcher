@@ -365,16 +365,20 @@ async def get_history() -> list[dict[str, Any]]:
 @app.delete("/api/sessions/{session_id}")
 async def delete_session(session_id: str) -> dict[str, Any]:
     """Permanently delete an individual session and its artifacts."""
+    had_memory = session_id in SESSIONS or session_id in SESSION_REPORTS
     SESSIONS.pop(session_id, None)
     SESSION_REPORTS.pop(session_id, None)
-    deleted = session_store.delete_session(session_id)
+    deleted_db = session_store.delete_session(session_id)
+
+    if not (had_memory or deleted_db):
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
     # Clean up disk files
     session_dir = Path("./storage/sessions") / session_id
     if session_dir.exists():
         shutil.rmtree(session_dir, ignore_errors=True)
 
-    return {"session_id": session_id, "deleted": deleted}
+    return {"session_id": session_id, "deleted": True}
 
 
 @app.delete("/api/history")
@@ -389,14 +393,27 @@ async def clear_all_history() -> dict[str, Any]:
 @app.post("/api/sessions/{session_id}/cancel")
 async def cancel_session(session_id: str) -> dict[str, Any]:
     """Emergency abort signal for an in-flight research mission."""
+    state = SESSIONS.get(session_id)
+    if not state:
+        row = session_store.get_session(session_id)
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        state = ResearchState(
+            session_id=session_id,
+            topic=row["topic"],
+            target_depth=row["target_depth"],
+            status=row["status"],
+            total_tokens_used=row["total_tokens_used"],
+            estimated_cost_usd=row["estimated_cost_usd"],
+        )
+
     token = CANCEL_TOKENS.get(session_id)
     if token:
         token.set()
 
-    state = SESSIONS.get(session_id)
-    if state:
-        state.status = "ABORTED"
-        session_store.upsert_session(state)
+    state.status = "ABORTED"
+    SESSIONS[session_id] = state
+    session_store.upsert_session(state)
 
     await broadcaster.broadcast(
         session_id,

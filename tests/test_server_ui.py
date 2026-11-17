@@ -1,4 +1,4 @@
-"""Unit and integration tests for FastAPI Server, Cockpit UI routes, SSE, and hardware APIs."""
+"""Comprehensive unit and integration tests for FastAPI Server, Cockpit UI routes, SSE, and hardware APIs."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -69,8 +69,9 @@ def test_get_and_update_config(client: TestClient) -> None:
     assert updated["max_cost_limit_usd"] == 5.0
 
 
-def test_ping_ollama(client: TestClient) -> None:
-    """Test /api/health/ollama ping endpoint."""
+def test_ping_ollama_online_and_offline(client: TestClient) -> None:
+    """Test /api/health/ollama ping endpoint under both online and unreachable states."""
+    # 1. Online state
     with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -83,9 +84,20 @@ def test_ping_ollama(client: TestClient) -> None:
         assert data["ok"] is True
         assert "llama3.2:latest" in data["models"]
 
+    # 2. Offline / Connection refused state
+    with patch("httpx.AsyncClient.get", side_effect=Exception("Connection refused")):
+        resp_offline = client.get("/api/health/ollama")
+        assert resp_offline.status_code == 200
+        assert resp_offline.json()["ok"] is False
 
-def test_start_research_and_sessions(client: TestClient) -> None:
-    """Test session lifecycle from start to steering and retrieval."""
+
+def test_start_research_validation_and_sessions(client: TestClient) -> None:
+    """Test research initiation, validation guards, and steering."""
+    # 1. Validation error: depth > 4 (Pydantic max=4 on ResearchRequest)
+    bad_depth_resp = client.post("/api/research", json={"topic": "Quantum", "depth": 10})
+    assert bad_depth_resp.status_code == 422
+
+    # 2. Successful initiation
     with patch("src.server._run_research_background", new_callable=AsyncMock):
         resp = client.post("/api/research", json={"topic": "Quantum Computing", "depth": 2})
         assert resp.status_code == 200
@@ -115,7 +127,13 @@ def test_start_research_and_sessions(client: TestClient) -> None:
         assert any(item["session_id"] == session_id for item in history_items)
 
 
-def test_session_not_found(client: TestClient) -> None:
-    """Test 404 behavior for unknown sessions."""
+def test_steer_and_session_not_found(client: TestClient) -> None:
+    """Test 404 behavior for unknown sessions on both GET and steer endpoints."""
     resp = client.get("/api/sessions/non_existent_session")
     assert resp.status_code == 404
+
+    bad_steer = client.post(
+        "/api/sessions/non_existent_session/steer",
+        json={"action": "PIVOT", "feedback": "Irrelevant"},
+    )
+    assert bad_steer.status_code == 404

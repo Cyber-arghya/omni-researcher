@@ -20,7 +20,7 @@ def client() -> TestClient:
 
 
 def test_session_store_lifecycle() -> None:
-    """Test non-volatile SQLite persistence operations."""
+    """Test non-volatile SQLite persistence operations, updates, and deletion."""
     with tempfile.TemporaryDirectory() as tmp_dir:
         db_path = Path(tmp_dir) / "test_sessions.db"
         store = SessionStore(db_path=db_path)
@@ -40,16 +40,30 @@ def test_session_store_lifecycle() -> None:
         assert retrieved["topic"] == "Solid State Electrolytes"
         assert retrieved["report_payload"]["markdown_content"] == "# Intro"
 
-        # 2. List
+        # 2. Update existing session
+        state.status = "COMPLETED"
+        store.upsert_session(state, report_payload={"markdown_content": "# Final"})
+        retrieved_updated = store.get_session("test_sess_001")
+        assert retrieved_updated is not None
+        assert retrieved_updated["status"] == "COMPLETED"
+        assert retrieved_updated["report_payload"]["markdown_content"] == "# Final"
+
+        # 3. List
         sessions = store.list_sessions()
         assert len(sessions) == 1
         assert sessions[0]["session_id"] == "test_sess_001"
 
-        # 3. Delete
+        # 4. Non-existent session returns None
+        assert store.get_session("non_existent_id") is None
+
+        # 5. Delete non-existent session returns False
+        assert store.delete_session("non_existent_id") is False
+
+        # 6. Delete existing session returns True
         assert store.delete_session("test_sess_001") is True
         assert store.get_session("test_sess_001") is None
 
-        # 4. Clear all
+        # 7. Clear all
         store.upsert_session(state)
         assert store.clear_all() == 1
         assert len(store.list_sessions()) == 0
@@ -121,9 +135,14 @@ def test_context_distiller_deduplication_and_ranking() -> None:
     assert len(ranked) == 2
     assert "millikelvin" in ranked[0]["text"] or "Shor's algorithm" in ranked[0]["text"]
 
+    # Edge cases: empty chunks or empty query
+    assert ContextDistiller.rank_chunks_zero_vram([], query="test") == []
+    empty_q_ranked = ContextDistiller.rank_chunks_zero_vram(chunks, query="")
+    assert len(empty_q_ranked) > 0
+
 
 def test_server_cancel_and_delete_endpoints(client: TestClient) -> None:
-    """Test emergency cancellation, single deletion, and bulk purge APIs."""
+    """Test emergency cancellation, single deletion, 404s, and bulk purge APIs."""
     state = ResearchState(
         session_id="cancel_session_123",
         topic="Neuromorphic Computing",
@@ -137,16 +156,28 @@ def test_server_cancel_and_delete_endpoints(client: TestClient) -> None:
     assert cancel_resp.json()["status"] == "ABORTED"
     assert SESSIONS["cancel_session_123"].status == "ABORTED"
 
+    # Cancel non-existent session returns 404
+    bad_cancel = client.post("/api/sessions/unknown_123/cancel")
+    assert bad_cancel.status_code == 404
+
     # 2. Test Bundle Download
     bundle_resp = client.get("/api/sessions/cancel_session_123/bundle")
     assert bundle_resp.status_code == 200
     assert bundle_resp.headers["content-type"] == "application/zip"
+
+    # Bundle for non-existent session returns 404
+    bad_bundle = client.get("/api/sessions/unknown_bundle_id/bundle")
+    assert bad_bundle.status_code == 404
 
     # 3. Test Delete Individual Session
     del_resp = client.delete("/api/sessions/cancel_session_123")
     assert del_resp.status_code == 200
     assert del_resp.json()["deleted"] is True
     assert "cancel_session_123" not in SESSIONS
+
+    # Delete non-existent session returns 404
+    bad_del = client.delete("/api/sessions/unknown_to_delete")
+    assert bad_del.status_code == 404
 
     # 4. Test Bulk Purge
     SESSIONS["temp_1"] = ResearchState(session_id="temp_1", topic="Topic 1")
