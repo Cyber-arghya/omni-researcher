@@ -20,8 +20,19 @@ class EmbeddingEngine:
         if self._model is None:
             from sentence_transformers import SentenceTransformer
 
-            logger.info("Loading local embedding model: %s", self.model_name)
-            self._model = SentenceTransformer(self.model_name)
+            from src.hardware import HardwareProfiler
+
+            device = settings.embedding_device
+            if device == "auto":
+                tier_cfg = HardwareProfiler.get_tier_config(
+                    settings.hardware_profile, settings.llm_provider
+                )
+                device = tier_cfg.get("embedding_device", "cpu")
+
+            logger.info(
+                "Loading local embedding model '%s' on device '%s'", self.model_name, device
+            )
+            self._model = SentenceTransformer(self.model_name, device=device)
         return self._model
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:

@@ -22,11 +22,27 @@ class ModelRouter:
         if settings.llm_provider == "nvidia":
             self.fast_model = (
                 settings.nvidia_model
-                if settings.llm_fast_model == "llama3.2:latest"
+                if settings.llm_fast_model in ["llama3.2:latest", "llama3.2:3b"]
                 else settings.llm_fast_model
             )
             self.deep_model = (
                 settings.nvidia_model
+                if settings.llm_deep_model in ["deepseek-r1:latest", "qwen2.5:7b"]
+                else settings.llm_deep_model
+            )
+        elif settings.llm_provider == "ollama":
+            from src.hardware import HardwareProfiler
+
+            tier_cfg = HardwareProfiler.get_tier_config(
+                settings.hardware_profile, settings.llm_provider
+            )
+            self.fast_model = (
+                tier_cfg["fast_model"]
+                if settings.llm_fast_model == "llama3.2:latest"
+                else settings.llm_fast_model
+            )
+            self.deep_model = (
+                tier_cfg["deep_model"]
                 if settings.llm_deep_model == "deepseek-r1:latest"
                 else settings.llm_deep_model
             )

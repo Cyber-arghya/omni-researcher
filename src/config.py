@@ -59,6 +59,22 @@ class Settings(BaseSettings):
         description="NVIDIA NIM model identifier",
     )
 
+    # --- Hardware & Resource Allocation Profile ---
+    hardware_profile: Literal[
+        "auto", "entry_8gb", "enthusiast_16gb", "workstation_24gb_plus", "cloud_hybrid"
+    ] = Field(
+        default="auto",
+        description="Hardware profile for local execution (auto, entry_8gb, enthusiast_16gb, workstation_24gb_plus, cloud_hybrid)",
+    )
+    embedding_device: Literal["auto", "cpu", "cuda"] = Field(
+        default="auto",
+        description="Device used for dense sentence embeddings (auto, cpu, cuda)",
+    )
+    crawler_concurrency: int = Field(
+        default=3,
+        description="Max parallel workers for web crawling and page extraction",
+    )
+
     # --- Vision & Multi-Modal ---
     vision_enabled: bool = Field(default=True, description="Enable chart and diagram extraction")
     vision_model: str = Field(
