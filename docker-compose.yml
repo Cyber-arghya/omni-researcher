@@ -9,23 +9,43 @@ services:
       - "8000:8000"
     environment:
       - LLM_PROVIDER=ollama
-      - LLM_BASE_URL=http://host.docker.internal:11434/v1
+      - LLM_BASE_URL=http://ollama:11434/v1
       - LLM_FAST_MODEL=llama3.2:latest
-      - LLM_DEEP_MODEL=deepseek-r1:latest
+      - LLM_DEEP_MODEL=llama3.2:latest
       - SEARCH_PROVIDER=ddg
       - STORAGE_DIR=/app/storage
       - REPORTS_DIR=/app/reports
     extra_hosts:
-      # Allows the container to communicate directly with Ollama running on the host OS
+      # Allows fallback communication with Ollama running on the host OS / WSL2
       - "host.docker.internal:host-gateway"
     volumes:
       - ./reports:/app/reports
       - ./storage:/app/storage
+    depends_on:
+      - ollama
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama_service
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   searxng:
     image: searxng/searxng:latest
@@ -41,3 +61,4 @@ services:
 
 volumes:
   searxng_data:
+  ollama_models:
