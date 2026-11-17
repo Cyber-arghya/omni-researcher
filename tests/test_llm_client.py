@@ -37,4 +37,3 @@ async def test_llm_client_reasoning_content_parsing() -> None:
         call_kwargs = mock_create.call_args[1]
         assert "extra_body" in call_kwargs
         assert call_kwargs["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
-
