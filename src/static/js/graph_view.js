@@ -100,3 +100,4 @@ class KnowledgeGraphView {
 }
 
 window.KnowledgeGraphView = KnowledgeGraphView;
+

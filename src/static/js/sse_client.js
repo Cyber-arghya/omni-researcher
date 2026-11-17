@@ -74,3 +74,4 @@ class AgentSSEClient {
 }
 
 window.AgentSSEClient = AgentSSEClient;
+

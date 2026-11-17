@@ -95,3 +95,4 @@ class HardwareController {
 }
 
 window.HardwareController = HardwareController;
+
